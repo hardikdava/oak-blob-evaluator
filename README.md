@@ -7,7 +7,9 @@ This resposity is pre evaluation step which should be done before updating model
 
 ```python val.py --weights {blob_model_directory} --imgsz {416} --name {save_dir_name} --project {runs/val}```
 
-blob_model_directory should have .blob model and metadata json file.
+#### Notes:
+- blob_model_directory should have .blob model and metadata json file.
+- At least 1 depthai device should be attached to host.
 
 ### TODO:
 
