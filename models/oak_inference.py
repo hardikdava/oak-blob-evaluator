@@ -28,6 +28,9 @@ class OakInference:
         self.qNnIn = self.device.getInputQueue(name="nnIn")
 
 
+    def __call__(self, img):
+        return self.infer(img)
+
 
     def create_pipeline(self):
         with open(self.configPath) as f:
@@ -40,14 +43,14 @@ class OakInference:
 
         # extract metadata
         metadata = nnConfig.get("NN_specific_metadata", {})
-        self.classes = metadata.get("classes", {})
+        self.classes = int(metadata.get("classes", {}))
         self.coordinates = metadata.get("coordinates", {})
         self.anchors = metadata.get("anchors", {})
         self.anchorMasks = metadata.get("anchor_masks", {})
         self.iouThreshold = metadata.get("iou_threshold", {})
         self.confidenceThreshold = metadata.get("confidence_threshold", {})
 
-        self.confidenceThreshold = 0.001  ## Override confidence threshold
+        # self.confidenceThreshold = 0.001  ## Override confidence threshold
 
         # parse labels
         self.nnMappings = self.config.get("mappings", {})
@@ -73,7 +76,7 @@ class OakInference:
         detectionNetwork.setIouThreshold(self.iouThreshold)
         detectionNetwork.setBlobPath(self.nnPath)
         detectionNetwork.setNumInferenceThreads(2)
-        detectionNetwork.input.setBlocking(False)
+        detectionNetwork.input.setBlocking(True)
 
         nnIn.out.link(detectionNetwork.input)
         detectionNetwork.out.link(nnOut.input)
@@ -83,8 +86,8 @@ class OakInference:
     def infer(self, img):
         results = np.array([])
         dai_img = dai.ImgFrame()
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         in_img = cv2.resize(img, (self.W, self.H))
+        in_img = cv2.cvtColor(in_img, cv2.COLOR_BGR2RGB)
         arr = in_img.transpose(2, 0, 1).flatten()
         dai_img.setData(arr)
         dai_img.setTimestamp(monotonic())
@@ -100,7 +103,7 @@ class OakInference:
 
     def frameNorm(self, frame, bbox):
         normVals = np.full(len(bbox), frame.shape[0])
-        normVals[::2] = frame.shape[1]
+        normVals[::2] = frame.shape[0]
         return (np.clip(np.array(bbox), 0, 1) * normVals).astype(int)
 
     def scale_boxes(self, orig_frame, detections: dai.ImgDetections):
@@ -114,41 +117,14 @@ class OakInference:
     def draw_detections(self, frame: np.ndarray, detections: np.ndarray):
         color = (255, 0, 0)
         for det in detections:
-            cv2.putText(frame, str(self.labels[int(det[5])]), (int(det[0]) + 10, int(det[1]) + 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-            cv2.rectangle(frame, (int(det[0]), int(det[1])), (int(det[2]), int(det[3])), color, 2)
+            if det[-1]> 0.5:
+                cv2.putText(frame, str(self.labels[int(det[5])]), (int(det[0]) + 10, int(det[1]) + 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                cv2.rectangle(frame, (int(det[0]), int(det[1])), (int(det[2]), int(det[3])), color, 2)
         return frame
 
-
-
-class DetectMultiBackend():
-    # YOLOv5 MultiBackend class for python inference on various backends
-    def __init__(self, weights='yolov5s.pt', data=None, fuse=True):
-        super().__init__()
-        w = str(weights[0] if isinstance(weights, list) else weights)
-        nhwc = True
-        stride = 32  # default stride
-        LOGGER.info(f'Using {w} as Inference Server...')
-        from oak_inference import OakInference
-        self.configPath = glob.glob(str(weights) + "/*.json")[0]
-        self.nnPath = glob.glob(str(weights) + "/*.blob")[0]
-        self.model = OakInference(configPath=self.configPath, nnPath=self.nnPath, image_size=416)
-        self.names = self.model.nnMappings
-
-        self.__dict__.update(locals())  # assign all variables to self
-
-    def forward(self, im):
-        # YOLOv5 MultiBackend inference
-        if self.nhwc:
-            im = im.permute(0, 2, 3, 1)  # torch BCHW to numpy BHWC shape(1,320,192,3)
-        im = im.cpu().numpy()[0]
-        y = self.model.infer(im)
-        y = np.expand_dims(y, 0)
-
-        if isinstance(y, (list, tuple)):
-            return self.from_numpy(y[0]) if len(y) == 1 else [self.from_numpy(x) for x in y]
-        else:
-            return self.from_numpy(y)
-
-    def from_numpy(self, x):
-        return torch.from_numpy(x).to(self.device) if isinstance(x, np.ndarray) else x
-
+if __name__ == "__main__":
+    configPath = "../v7_blob/metadata.json"
+    nnPath = "../v7_blob/model.blob"
+    model = OakInference(configPath, nnPath, 416)
+    img = cv2.imread("../../datasets/coco128/images/train2017/000000000025.jpg")
+    detections = model.infer(img)

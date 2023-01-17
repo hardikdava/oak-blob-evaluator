@@ -16,8 +16,8 @@ class DetectMultiBackend:
             LOGGER.info(f'Using {w} as Inference Server...')
             check_requirements('depthai')
             from models.oak_inference import OakInference
-            configPath = glob.glob(str(weights) + "/*.json")[0]
-            nnPath = glob.glob(str(weights) + "/*.blob")[0]
+            configPath = glob.glob(str(w) + "/*.json")[0]
+            nnPath = glob.glob(str(w) + "/*.blob")[0]
             model = OakInference(configPath=configPath, nnPath=nnPath, image_size=416)
             names = model.labels
 
